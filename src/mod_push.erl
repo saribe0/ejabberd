@@ -355,7 +355,7 @@ offline_message({Action, #message{to = #jid{luser = LUser,
     case lookup_sessions(LUser, LServer) of
 	{ok, [_|_] = Clients} ->
 	    ?DEBUG("Notifying ~s@~s of offline message", [LUser, LServer]),
-	    notify(LUser, LServer, Clients);
+	    notify(LUser, LServer, Clients, Pkt);
 	_ ->
 	    ok
     end,
@@ -408,7 +408,7 @@ notify(#{jid := #jid{luser = LUser, lserver = LServer}, sid := {TS, _}}) ->
     end.
 
 -spec notify(binary(), binary(), [push_session()]) -> ok.
-notify(LUser, LServer, Clients) ->
+notify(LUser, LServer, Clients, Pkt) ->
     lists:foreach(
       fun({TS, PushLJID, Node, XData}) ->
 	      HandleResponse = fun(#iq{type = result}) ->
@@ -418,14 +418,18 @@ notify(LUser, LServer, Clients) ->
 				  (timeout) ->
 				       ok % Hmm.
 			       end,
-	      notify(LServer, PushLJID, Node, XData, HandleResponse)
+	      notify(LServer, PushLJID, Node, XData, HandleResponse, Pkt)
       end, Clients).
 
 -spec notify(binary(), ljid(), binary(), xdata(),
 	     fun((iq() | timeout) -> any())) -> ok.
-notify(LServer, PushLJID, Node, XData, HandleResponse) ->
+notify(LServer, PushLJID, Node, XData, HandleResponse, Pkt) ->
+	#message{to = Message_Recipient, from = Message_Sender, body = Message_Body} = Pkt
     From = jid:make(LServer),
-    Item = #ps_item{xml_els = [xmpp:encode(#push_notification{})]},
+    Item = #ps_item{xml_els = [xmpp:encode(#push_notification{from = Message_Sender, 
+															  to = Message_Recipient,
+															  body = Message_Body,
+															  device_token = XData})]},
     PubSub = #pubsub{publish = #ps_publish{node = Node, items = [Item]},
 		     publish_options = XData},
     IQ = #iq{type = set,
